@@ -5,6 +5,7 @@ from rca_engine.rca_graph import RCAGraph
 from rca_engine.timeline_builder import IncidentTimeline
 from rca_engine.rca_explainer import RCAExplainer
 from rca_engine.incident_store import IncidentStore
+from rca_engine.root_cause_ranker import RootCauseRanker
 
 
 class RCAService:
@@ -18,6 +19,9 @@ class RCAService:
 
         # Phase A1: historical memory
         self.incident_store = IncidentStore()
+
+        # Phase A2: probabilistic ranking
+        self.root_cause_ranker = RootCauseRanker()
 
     def analyze_trace(self, raw_spans: List[Dict]) -> Dict:
         """
@@ -38,7 +42,7 @@ class RCAService:
         # 4️⃣ Generate explanation
         explanation = self.explainer.explain(graph_summary)
 
-        # 5️⃣ Assemble result
+        # 5️⃣ Assemble base result
         result = {
             "incident_id": graph_summary.get("incident_id"),
             "root_cause": graph_summary.get("root_cause"),
@@ -52,13 +56,26 @@ class RCAService:
             "explanation": explanation,
         }
 
-        # 🔥 Phase A1: Learn from this incident
+        # -----------------------------
+        # 🔥 Phase A1: Learn incident
+        # -----------------------------
         self.incident_store.save(result)
 
-        # Fetch historical occurrence count
         history = self.incident_store.similar_incidents(result)
-        result["historical_occurrences"] = (
-            history[0]["count"] if history else 1
-        )
+        historical_occurrences = history[0]["count"] if history else 1
+        result["historical_occurrences"] = historical_occurrences
+
+        # -----------------------------
+        # 🎯 Phase A2: Probabilistic RCA
+        # -----------------------------
+        if result["root_cause"]:
+            result["probable_root_causes"] = self.root_cause_ranker.rank(
+                root_cause=result["root_cause"],
+                graph_edges=result["graph"]["edges"],
+                nodes=result["graph"]["nodes"],
+                historical_occurrences=historical_occurrences,
+            )
+        else:
+            result["probable_root_causes"] = []
 
         return result
