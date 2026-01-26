@@ -6,6 +6,7 @@ from rca_engine.timeline_builder import IncidentTimeline
 from rca_engine.rca_explainer import RCAExplainer
 from rca_engine.incident_store import IncidentStore
 from rca_engine.root_cause_ranker import RootCauseRanker
+from rca_engine.incident_similarity import IncidentSimilarityEngine
 
 
 class RCAService:
@@ -22,6 +23,9 @@ class RCAService:
 
         # Phase A2: probabilistic ranking
         self.root_cause_ranker = RootCauseRanker()
+
+        # Phase A3: incident similarity & recall
+        self.similarity_engine = IncidentSimilarityEngine()
 
     def analyze_trace(self, raw_spans: List[Dict]) -> Dict:
         """
@@ -77,5 +81,15 @@ class RCAService:
             )
         else:
             result["probable_root_causes"] = []
+
+        # -----------------------------
+        # 🧠 Phase A3: Similar incidents
+        # -----------------------------
+        past_incidents = self.incident_store.all()
+
+        result["similar_incidents"] = self.similarity_engine.find_similar(
+            current=result,
+            history=past_incidents,
+        )
 
         return result
