@@ -7,6 +7,7 @@ from rca_engine.rca_explainer import RCAExplainer
 from rca_engine.incident_store import IncidentStore
 from rca_engine.root_cause_ranker import RootCauseRanker
 from rca_engine.incident_similarity import IncidentSimilarityEngine
+from rca_engine.confidence_engine import ConfidenceEngine
 
 
 class RCAService:
@@ -27,6 +28,9 @@ class RCAService:
         # Phase A3: incident similarity & recall
         self.similarity_engine = IncidentSimilarityEngine()
 
+        # Phase A4: confidence engine
+        self.confidence_engine = ConfidenceEngine()
+
     def analyze_trace(self, raw_spans: List[Dict]) -> Dict:
         """
         Executes full RCA pipeline on a trace.
@@ -43,10 +47,7 @@ class RCAService:
         # 3️⃣ Build incident timeline
         timeline = self.timeline_builder.build(spans)
 
-        # 4️⃣ Generate explanation
-        explanation = self.explainer.explain(graph_summary)
-
-        # 5️⃣ Assemble base result
+        # 4️⃣ Assemble base result (WITHOUT explanation yet)
         result = {
             "incident_id": graph_summary.get("incident_id"),
             "root_cause": graph_summary.get("root_cause"),
@@ -57,7 +58,6 @@ class RCAService:
                 "edges": graph_summary.get("edges", []),
             },
             "timeline": timeline,
-            "explanation": explanation,
         }
 
         # -----------------------------
@@ -87,9 +87,28 @@ class RCAService:
         # -----------------------------
         past_incidents = self.incident_store.all()
 
-        result["similar_incidents"] = self.similarity_engine.find_similar(
+        similar_incidents = self.similarity_engine.find_similar(
             current=result,
             history=past_incidents,
         )
+        result["similar_incidents"] = similar_incidents
+
+        # -----------------------------
+        # ✅ Phase A4: Confidence score
+        # -----------------------------
+        result["confidence"] = self.confidence_engine.compute(
+            result=result,
+            similar_incidents=similar_incidents,
+        )
+
+        # -----------------------------
+        # 🗣️ Phase A4.3: Confidence-aware explanation
+        # -----------------------------
+        explanation_input = {
+            **graph_summary,
+            "confidence": result["confidence"],
+        }
+
+        result["explanation"] = self.explainer.explain(explanation_input)
 
         return result
