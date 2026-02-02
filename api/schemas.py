@@ -127,3 +127,16 @@ class RCAResponse(BaseModel):
     graph: RCAGraphSchema
     timeline: List[TimelineEvent]
     explanation: RCAExplanation
+
+# =====================================================
+# Feedback Schema (Phase A6)
+# =====================================================
+
+class RCAFeedbackRequest(BaseModel):
+    """
+    Human feedback for RCA correctness.
+    """
+
+    incident_id: str
+    root_cause: str
+    correct: bool

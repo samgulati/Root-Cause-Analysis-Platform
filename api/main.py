@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from api.schemas import RCARequest, RCAResponse
 from api.service import RCAService
 from rca_engine.otel_adapter import extract_raw_spans
+from api.schemas import RCAFeedbackRequest
+
 
 # --------------------------------------------------
 # FastAPI App
@@ -63,6 +65,26 @@ def analyze_otel_trace(otel_payload: dict):
     result = rca_service.analyze_trace(raw_spans)
 
     return result
+
+@app.post("/feedback")
+def submit_feedback(feedback: RCAFeedbackRequest):
+    """
+    Accept human feedback to improve RCA learning.
+    """
+
+    rca_service.feedback_store.record(
+        incident_id=feedback.incident_id,
+        root_cause=feedback.root_cause,
+        confidence=0.0,  # confidence already accounted earlier
+        correct=feedback.correct,
+    )
+
+    return {
+        "status": "feedback recorded",
+        "incident_id": feedback.incident_id,
+        "root_cause": feedback.root_cause,
+        "correct": feedback.correct,
+    }
 
 
 @app.get("/health")

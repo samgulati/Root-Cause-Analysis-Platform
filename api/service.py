@@ -8,6 +8,9 @@ from rca_engine.incident_store import IncidentStore
 from rca_engine.root_cause_ranker import RootCauseRanker
 from rca_engine.incident_similarity import IncidentSimilarityEngine
 from rca_engine.confidence_engine import ConfidenceEngine
+from rca_engine.feedback_store import FeedbackStore
+from rca_engine.learning_engine import LearningEngine
+
 
 
 class RCAService:
@@ -30,6 +33,11 @@ class RCAService:
 
         # Phase A4: confidence engine
         self.confidence_engine = ConfidenceEngine()
+
+        # Phase A5: adaptive learning
+        self.feedback_store = FeedbackStore()
+        self.learning_engine = LearningEngine()
+
 
     def analyze_trace(self, raw_spans: List[Dict]) -> Dict:
         """
@@ -96,10 +104,20 @@ class RCAService:
         # -----------------------------
         # ✅ Phase A4: Confidence score
         # -----------------------------
-        result["confidence"] = self.confidence_engine.compute(
+        base_confidence = self.confidence_engine.compute(
             result=result,
             similar_incidents=similar_incidents,
         )
+
+        stats = self.feedback_store.stats_for_root(result["root_cause"])
+        adjusted_confidence = self.learning_engine.adjust_confidence(
+            base_confidence=base_confidence,
+            accuracy=stats["accuracy"],
+        )
+
+        result["confidence"] = adjusted_confidence
+        result["learning_accuracy"] = stats["accuracy"]
+
 
         # -----------------------------
         # 🗣️ Phase A4.3: Confidence-aware explanation
