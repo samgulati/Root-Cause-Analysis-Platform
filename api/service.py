@@ -10,7 +10,7 @@ from rca_engine.incident_similarity import IncidentSimilarityEngine
 from rca_engine.confidence_engine import ConfidenceEngine
 from rca_engine.feedback_store import FeedbackStore
 from rca_engine.learning_engine import LearningEngine
-
+from rca_engine.feature_extractor import FeatureExtractor
 
 
 class RCAService:
@@ -38,6 +38,8 @@ class RCAService:
         self.feedback_store = FeedbackStore()
         self.learning_engine = LearningEngine()
 
+        # Phase B2: feature extraction
+        self.feature_extractor = FeatureExtractor()
 
     def analyze_trace(self, raw_spans: List[Dict]) -> Dict:
         """
@@ -55,7 +57,7 @@ class RCAService:
         # 3️⃣ Build incident timeline
         timeline = self.timeline_builder.build(spans)
 
-        # 4️⃣ Assemble base result (WITHOUT explanation yet)
+        # 4️⃣ Assemble base result
         result = {
             "incident_id": graph_summary.get("incident_id"),
             "root_cause": graph_summary.get("root_cause"),
@@ -69,16 +71,14 @@ class RCAService:
         }
 
         # -----------------------------
-        # 🔥 Phase A1: Learn incident
+        # Phase A1: Historical memory
         # -----------------------------
-        self.incident_store.save(result)
-
         history = self.incident_store.similar_incidents(result)
         historical_occurrences = history[0]["count"] if history else 1
         result["historical_occurrences"] = historical_occurrences
 
         # -----------------------------
-        # 🎯 Phase A2: Probabilistic RCA
+        # Phase A2: Probabilistic RCA
         # -----------------------------
         if result["root_cause"]:
             result["probable_root_causes"] = self.root_cause_ranker.rank(
@@ -91,7 +91,7 @@ class RCAService:
             result["probable_root_causes"] = []
 
         # -----------------------------
-        # 🧠 Phase A3: Similar incidents
+        # Phase A3: Similar incidents
         # -----------------------------
         past_incidents = self.incident_store.all()
 
@@ -102,7 +102,7 @@ class RCAService:
         result["similar_incidents"] = similar_incidents
 
         # -----------------------------
-        # ✅ Phase A4: Confidence score
+        # Phase A4: Confidence score
         # -----------------------------
         base_confidence = self.confidence_engine.compute(
             result=result,
@@ -118,9 +118,8 @@ class RCAService:
         result["confidence"] = adjusted_confidence
         result["learning_accuracy"] = stats["accuracy"]
 
-
         # -----------------------------
-        # 🗣️ Phase A4.3: Confidence-aware explanation
+        # Confidence-aware explanation
         # -----------------------------
         explanation_input = {
             **graph_summary,
@@ -128,5 +127,15 @@ class RCAService:
         }
 
         result["explanation"] = self.explainer.explain(explanation_input)
+
+        # -----------------------------
+        # Phase B2 (FINAL): Feature extraction
+        # -----------------------------
+        result["ml_record"] = self.feature_extractor.extract(result)
+
+        # -----------------------------
+        # Persist full incident
+        # -----------------------------
+        self.incident_store.save(result)
 
         return result
