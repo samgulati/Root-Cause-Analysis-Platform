@@ -11,6 +11,7 @@ from rca_engine.confidence_engine import ConfidenceEngine
 from rca_engine.feedback_store import FeedbackStore
 from rca_engine.learning_engine import LearningEngine
 from rca_engine.feature_extractor import FeatureExtractor
+from rca_engine.dataset_writer import DatasetWriter
 
 
 class RCAService:
@@ -40,6 +41,10 @@ class RCAService:
 
         # Phase B2: feature extraction
         self.feature_extractor = FeatureExtractor()
+
+        # Phase B2.1: dataset persistence
+        self.dataset_writer = DatasetWriter()
+
 
     def analyze_trace(self, raw_spans: List[Dict]) -> Dict:
         """
@@ -132,6 +137,12 @@ class RCAService:
         # Phase B2 (FINAL): Feature extraction
         # -----------------------------
         result["ml_record"] = self.feature_extractor.extract(result)
+
+        # -----------------------------
+        # Phase B2.1: Persist ML record
+        # -----------------------------
+        self.dataset_writer.write(result["ml_record"])
+
 
         # -----------------------------
         # Persist full incident
